@@ -151,6 +151,37 @@ button { cursor: pointer; }
 @keyframes search-drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 680px) { .topbar { padding: 0 15px; }.board-stats { display: none; }.board-title { display: none; }.top-actions .icon-button:not(.undo-button) { display: none; }.search-bar { width: 140px; }.search-bar:focus-within { width: 165px; }.search-dropdown { width: 280px; }.arrange-button span { display: none; }.arrange-button { padding: 8px 9px; }.share-button { padding: 8px 9px; }.canvas-heading { top: 6%; }.canvas-heading h1 { font-size: 25px; }.cluster:nth-of-type(4) { display: none; }.cluster { transform: translate(-50%, -50%) scale(.82); }.cluster:nth-of-type(2) { left: 30% !important; top: 39% !important; }.cluster:nth-of-type(3) { left: 69% !important; top: 39% !important; }.canvas-grid { inset: -20px; }.bottom-bar { padding: 14px 0 16px; }.add-button { padding: 9px; font-size: 0; }.add-button span { font-size: 14px; margin: 0; } }
 
+.sb-sub-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.sb-sub-stat { background: var(--paper); border: 1px solid #e3ebe4; border-radius: 9px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.sb-sub-header { display: flex; align-items: center; gap: 5px; }
+.sb-sub-label { font-size: 10px; font-weight: 600; color: #7d8c80; text-transform: uppercase; letter-spacing: .05em; }
+.sb-sub-icon { flex-shrink: 0; }
+.sb-icon-adult { color: #55755e; }
+.sb-icon-child { color: #b57a36; }
+.sb-sub-num { font-size: 17px; font-weight: 700; color: #2e3d33; letter-spacing: -.03em; line-height: 1; }
+.sb-child-stat { background: #fdfaf4; border-color: #f1dfbe; }
+.sb-child-num { color: #9e6424; }
+.sb-breakdown-hint { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #839185; margin-top: 2px; }
+.sb-dot-sep { color: #c4d0c6; font-weight: bold; }
+
+.person-node.person-child { background: #fffdf7; border-color: #eed69e; color: #75521b; box-shadow: 0 4px 12px rgba(181, 122, 54, 0.12); }
+.person-child-icon { color: #c48332; flex-shrink: 0; }
+.child-node-badge { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: #faebd0; color: #8c5b1c; padding: 1px 4px; border-radius: 4px; }
+.connections line.connection-child { stroke: #edd0a8; stroke-width: 1.6; }
+
+.fc-person-child { background: #fdfaf3 !important; border-color: #edd8ab !important; color: #6e4c19 !important; }
+.fc-child-icon { color: #b57a36; flex-shrink: 0; }
+.fc-child-badge { font-size: 9px; font-weight: 700; color: #87571b; background: #faebd0; border-radius: 4px; padding: 1px 5px; letter-spacing: .03em; }
+.fc-toggle-role { border: 0; background: rgba(0, 0, 0, 0.05); color: #78897c; border-radius: 4px; font-size: 9px; font-weight: 600; padding: 2px 6px; margin-left: 2px; cursor: pointer; transition: background .12s, color .12s; }
+.fc-toggle-role:hover { background: #e0e8e1; color: #2e3d33; }
+.fc-person-child .fc-toggle-role { background: #f5e4c2; color: #7d5722; }
+.fc-person-child .fc-toggle-role:hover { background: #edd3a4; color: #593b11; }
+.fc-breakdown { display: block; font-size: 10px; color: #87948a; margin-top: 3px; font-weight: 500; }
+.fc-person-name { font-weight: 600; }
+
+.search-child-pill { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 700; color: #8c5b1c; background: #fdf3de; border: 1px solid #f2dbaf; border-radius: 999px; padding: 1px 6px; }
+.hint-child-tip { color: #9c6c2e; font-weight: 600; }
+
 @layer base { * { border-color: var(--line); } }
 
 .loading-screen { position: fixed; inset: 0; background: #f8faf6; background-image: radial-gradient(#dfe5df 1px, transparent 1px); background-size: 23px 23px; display: flex; align-items: center; justify-content: center; z-index: 100; animation: fade-in .3s ease; }
@@ -165,3 +196,5 @@ button { cursor: pointer; }
 .loading-dots span:nth-child(3) { animation-delay: .3s; }
 @keyframes dot-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-6px); opacity: 1; } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+

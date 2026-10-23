@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import {
+  Baby,
   CheckCircle2,
   Copy,
   Download,
@@ -15,6 +16,7 @@ import {
   Share2,
   SlidersHorizontal,
   Undo2,
+  User,
   UserX,
   X,
   ZoomIn,
@@ -90,6 +92,29 @@ function getGuestMatchScore(query: string, name: string) {
     score: isMatch ? sim : 0,
   }
 }
+
+/** Returns true if a stored person entry is prefixed with $ (child marker) */
+function isChild(name: string): boolean {
+  return typeof name === 'string' && name.trim().startsWith('$')
+}
+
+/** Strips the leading $ and any whitespace to get the display name */
+function cleanPersonName(name: string): string {
+  return name.trim().replace(/^\$\s*/, '')
+}
+
+/**
+ * Normalises raw user input:
+ *  - "$Hassan" → "$Hassan"
+ *  - "$ Hassan" → "$Hassan"
+ *  - "Hassan"  → "Hassan"
+ */
+function normalizePersonInput(raw: string): string {
+  const t = raw.trim()
+  if (t.startsWith('$')) return '$' + t.replace(/^\$\s*/, '')
+  return t
+}
+
 
 export default function Page() {
   const { data, mutate } = useSWR<BoardData>('/api/board', fetcher, { refreshInterval: 3000 })
@@ -237,7 +262,7 @@ export default function Page() {
   }
 
   function addPersonToFamily(familyId: string, name: string) {
-    const trimmed = name.trim()
+    const trimmed = normalizePersonInput(name)
     if (!trimmed) return
     pushUndo()
     const nextFamilies = families.map((f) => f.id === familyId ? { ...f, people: [...new Set([...f.people, trimmed])] } : f)
@@ -287,11 +312,12 @@ export default function Page() {
       score: number
       distance: number
       isSpellingMatch: boolean
+      isChild: boolean
     }> = []
 
     families.forEach((family) => {
       family.people.forEach((person) => {
-        const match = getGuestMatchScore(q, person)
+        const match = getGuestMatchScore(q, cleanPersonName(person))
         if (match.matched) {
           results.push({
             person,
@@ -302,6 +328,7 @@ export default function Page() {
             score: match.score,
             distance: match.dist,
             isSpellingMatch: match.type === 'fuzzy' && match.dist > 0,
+            isChild: isChild(person),
           })
         }
       })
@@ -325,21 +352,24 @@ export default function Page() {
   }
 
   const totalGuests = useMemo(() => families.reduce((sum, family) => sum + family.people.length, 0), [families])
+  const totalChildren = useMemo(() => families.reduce((sum, family) => sum + family.people.filter(isChild).length, 0), [families])
+  const totalAdults = useMemo(() => totalGuests - totalChildren, [totalGuests, totalChildren])
   const visibleFamilies = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return families
     return families.filter((family) => {
-      if (`${family.name} ${family.people.join(' ')}`.toLowerCase().includes(query)) return true
+      if (`${family.name} ${family.people.map(cleanPersonName).join(' ')}`.toLowerCase().includes(query)) return true
       if (getGuestMatchScore(query, family.name).matched) return true
-      return family.people.some((person) => getGuestMatchScore(query, person).matched)
+      return family.people.some((person) => getGuestMatchScore(query, cleanPersonName(person)).matched)
     })
   }, [families, search])
+
 
   function addFamily(event: React.FormEvent) {
     event.preventDefault()
     const [rawName, rawPeople = ''] = input.split(':')
     const name = rawName.trim()
-    const people = rawPeople.split(',').map((person) => person.trim()).filter(Boolean)
+    const people = rawPeople.split(',').map((person) => normalizePersonInput(person)).filter(Boolean)
     if (!name || people.length === 0) return
     pushUndo()
     const existing = families.find((family) => family.name.toLowerCase() === name.toLowerCase())
@@ -491,7 +521,10 @@ export default function Page() {
                           <div className={`search-match-dot sb-dot-${match.familyColor}`} />
                           <div className="search-match-info">
                             <div className="search-match-name-row">
-                              <span className="search-match-name">{match.person}</span>
+                              <span className="search-match-name">{cleanPersonName(match.person)}</span>
+                              {match.isChild && (
+                                <span className="search-child-pill"><Baby size={9} /> Child</span>
+                              )}
                               {match.isSpellingMatch && (
                                 <span className="search-fuzzy-pill">Spelling match</span>
                               )}
@@ -551,6 +584,24 @@ export default function Page() {
               <span className="sb-heading">Guest Summary</span>
               <div className="sb-stat"><span className="sb-num">{families.length}</span><span className="sb-label">Families</span></div>
               <div className="sb-stat"><span className="sb-num">{totalGuests}</span><span className="sb-label">Confirmed guests</span></div>
+              {totalChildren > 0 && (
+                <div className="sb-sub-stats">
+                  <div className="sb-sub-stat">
+                    <div className="sb-sub-header">
+                      <User size={12} className="sb-sub-icon sb-icon-adult" />
+                      <span className="sb-sub-label">Adults</span>
+                    </div>
+                    <span className="sb-sub-num">{totalAdults}</span>
+                  </div>
+                  <div className="sb-sub-stat sb-child-stat">
+                    <div className="sb-sub-header">
+                      <Baby size={12} className="sb-sub-icon sb-icon-child" />
+                      <span className="sb-sub-label">Children</span>
+                    </div>
+                    <span className="sb-sub-num sb-child-num">{totalChildren}</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="sb-divider" />
             <div className="sb-section">
@@ -561,6 +612,15 @@ export default function Page() {
                 <span className="sb-input-suffix">guests</span>
               </div>
               <div className="sb-stat sb-total"><span className="sb-num">{totalGuests + extraGuests}</span><span className="sb-label">Total estimated</span></div>
+              {totalChildren > 0 && (
+                <div className="sb-breakdown-hint">
+                  <span>{totalAdults} adults</span>
+                  <span className="sb-dot-sep">·</span>
+                  <span>{totalChildren} children</span>
+                  <span className="sb-dot-sep">·</span>
+                  <span>{extraGuests} buffer</span>
+                </div>
+              )}
             </div>
             <div className="sb-divider" />
             <div className="sb-section">
@@ -617,8 +677,8 @@ export default function Page() {
                 </div>
               </section>
               <div className="bottom-bar">
-                <form className="composer" onSubmit={addFamily}><div className="composer-icon"><Plus size={19} /></div><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Add a family — e.g. Patel Family: Rajesh, Sunita, Aarav" aria-label="Add a family and guests" /><button type="submit" className="add-button">Add guests <span>↵</span></button></form>
-                <div className="hint"><span>Press <kbd>Enter</kbd> to add</span><span className="hint-separator">·</span><button type="button" onClick={copyLink}><Share2 size={12} /> Invite family to edit</button></div>
+                <form className="composer" onSubmit={addFamily}><div className="composer-icon"><Plus size={19} /></div><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Add a family — e.g. Patel: Rajesh, $Aarav ($ = child)" aria-label="Add a family and guests" /><button type="submit" className="add-button">Add guests <span>↵</span></button></form>
+                <div className="hint"><span>Press <kbd>Enter</kbd> to add</span><span className="hint-separator">·</span><span><Baby size={10} className="hint-child-tip" /> prefix <span className="hint-child-tip">$Name</span> for children</span><span className="hint-separator">·</span><button type="button" onClick={copyLink}><Share2 size={12} /> Invite family to edit</button></div>
               </div>
             </>
           ) : (
@@ -649,18 +709,25 @@ function FamilyCluster({ family, position, selected, onSelect, onDragStart, onDr
   const radius = count <= 3 ? 86 : count <= 4 ? 92 : count <= 5 ? 98 : count <= 6 ? 106 : Math.min(124, 88 + count * 4.5)
   const peopleWithPositions = family.people.map((person, index) => {
     const angle = -Math.PI / 2 + (index / count) * Math.PI * 2
-    return { person, x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius }
+    return { person, x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius, child: isChild(person) }
   })
+
+  const childCount = family.people.filter(isChild).length
+  const adultCount = family.people.length - childCount
+  const guestLabel = childCount > 0
+    ? `${adultCount} adult${adultCount !== 1 ? 's' : ''}, ${childCount} child${childCount !== 1 ? 'ren' : ''}`
+    : `${family.people.length} guest${family.people.length !== 1 ? 's' : ''}`
 
   return <div className={`cluster cluster-${family.color} ${selected ? 'selected' : ''}`} style={{ left: `${position.left}%`, top: `${position.top}%` }} onPointerDown={(event) => onDragStart(event, family.id)} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}>
     <svg className="connections" viewBox="0 0 300 210" aria-hidden="true">
-      {peopleWithPositions.map(({ person, x, y }) => <line key={`line-${person}`} x1={center.x} y1={center.y} x2={x} y2={y} />)}
+      {peopleWithPositions.map(({ person, x, y, child }) => <line key={`line-${person}`} className={child ? 'connection-child' : ''} x1={center.x} y1={center.y} x2={x} y2={y} />)}
     </svg>
-    <button className="family-node" onClick={(event) => { event.stopPropagation(); onSelect() }}><span className="family-kicker">FAMILY</span><strong>{family.name}</strong><small>{family.location} · {family.people.length} guests</small><span className="family-remove" role="button" aria-label={`Remove ${family.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemoveFamily(family.id) }}>×</span></button>
-    {peopleWithPositions.map(({ person, x, y }) => <div className="person-node" key={person} style={{ left: `${x}px`, top: `${y}px`, transform: 'translate(-50%, -50%)' }}><span>{person}</span><button className="remove-person" aria-label={`Remove ${person}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemovePerson(family.id, person) }}>×</button></div>)}
+    <button className="family-node" onClick={(event) => { event.stopPropagation(); onSelect() }}><span className="family-kicker">FAMILY</span><strong>{family.name}</strong><small>{family.location} · {guestLabel}</small><span className="family-remove" role="button" aria-label={`Remove ${family.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemoveFamily(family.id) }}>×</span></button>
+    {peopleWithPositions.map(({ person, x, y, child }) => <div className={`person-node${child ? ' person-child' : ''}`} key={person} style={{ left: `${x}px`, top: `${y}px`, transform: 'translate(-50%, -50%)' }}>{child && <Baby size={11} className="person-child-icon" />}<span>{cleanPersonName(person)}</span><button className="remove-person" aria-label={`Remove ${cleanPersonName(person)}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemovePerson(family.id, person) }}>×</button></div>)}
     {selected && <div className="cluster-menu"><button aria-label="Remove family" onClick={(event) => { event.stopPropagation(); onRemoveFamily(family.id) }}><MoreHorizontal size={15} /> Remove family</button></div>}
   </div>
 }
+
 
 function FamilyCard({ family, onRemoveFamily, onRemovePerson, onAddPerson }: {
   family: typeof initialFamilies[number]
@@ -677,25 +744,33 @@ function FamilyCard({ family, onRemoveFamily, onRemovePerson, onAddPerson }: {
     setAddInput('')
   }
 
+  const childCount = family.people.filter(isChild).length
+  const adultCount = family.people.length - childCount
+
   return (
     <div className={`fc fc-${family.color}`}>
       <div className="fc-header">
         <div>
           <span className="fc-kicker">FAMILY</span>
           <strong className="fc-name">{family.name}</strong>
+          {childCount > 0 && (
+            <span className="fc-breakdown">{adultCount} adult{adultCount !== 1 ? 's' : ''} · <Baby size={10} style={{ display: 'inline', verticalAlign: 'middle', color: '#b57a36' }} /> {childCount} child{childCount !== 1 ? 'ren' : ''}</span>
+          )}
         </div>
         <button className="fc-remove-family" aria-label={`Remove ${family.name}`} onClick={() => onRemoveFamily(family.id)}>×</button>
       </div>
       <div className="fc-people">
         {family.people.map((person) => (
-          <span key={person} className="fc-person">
-            {person}
-            <button className="fc-remove-person" aria-label={`Remove ${person}`} onClick={() => onRemovePerson(family.id, person)}>×</button>
+          <span key={person} className={`fc-person${isChild(person) ? ' fc-person-child' : ''}`}>
+            {isChild(person) && <Baby size={10} className="fc-child-icon" />}
+            <span className="fc-person-name">{cleanPersonName(person)}</span>
+            {isChild(person) && <span className="fc-child-badge">Child</span>}
+            <button className="fc-remove-person" aria-label={`Remove ${cleanPersonName(person)}`} onClick={() => onRemovePerson(family.id, person)}>×</button>
           </span>
         ))}
       </div>
       <form className="fc-add" onSubmit={handleAddPerson}>
-        <input value={addInput} onChange={(e) => setAddInput(e.target.value)} placeholder="Add guest..." aria-label="Add guest" />
+        <input value={addInput} onChange={(e) => setAddInput(e.target.value)} placeholder="Add guest… prefix $ for child" aria-label="Add guest" />
         <button type="submit"><Plus size={13} /></button>
       </form>
     </div>
@@ -709,7 +784,7 @@ function AddFamilyCard({ onAdd }: { onAdd: (name: string, people: string[]) => v
     e.preventDefault()
     const [rawName, rawPeople = ''] = input.split(':')
     const name = rawName.trim()
-    const people = rawPeople.split(',').map((p) => p.trim()).filter(Boolean)
+    const people = rawPeople.split(',').map((p) => normalizePersonInput(p)).filter(Boolean)
     if (!name || people.length === 0) return
     onAdd(name, people)
     setInput('')
@@ -718,9 +793,9 @@ function AddFamilyCard({ onAdd }: { onAdd: (name: string, people: string[]) => v
   return (
     <div className="fc fc-add-card">
       <strong className="fc-name">New Family</strong>
-      <p className="fc-add-hint">Format: Family Name: Person1, Person2</p>
+      <p className="fc-add-hint">Format: Family Name: Person1, $Child1</p>
       <form className="fc-add-family-form" onSubmit={handleSubmit}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g. Khan Family: Ali, Sara" aria-label="Add new family" />
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g. Khan Family: Ali, $Sara" aria-label="Add new family" />
         <button type="submit" className="fc-add-submit"><Plus size={14} /> Add</button>
       </form>
     </div>
