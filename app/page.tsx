@@ -39,10 +39,15 @@ const positions = [
 
 const fetcher = (url: string) => fetch(url).then((response) => response.json())
 
-type BoardData = { families: typeof initialFamilies; positions: Record<string, { left: number; top: number }> }
+type BoardData = {
+  families: typeof initialFamilies
+  positions: Record<string, { left: number; top: number }>
+  sidebar?: { extraGuests?: number; ratePerHead?: number }
+}
 type BoardSnapshot = {
   families: typeof initialFamilies
   positions: Record<string, { left: number; top: number }>
+  sidebar?: { extraGuests: number; ratePerHead: number }
 }
 
 function damerauLevenshtein(a: string, b: string): number {
@@ -144,6 +149,10 @@ export default function Page() {
   const familyPositionsRef = useRef(familyPositions)
   familyPositionsRef.current = familyPositions
 
+  const sidebarRef = useRef({ extraGuests, ratePerHead })
+  sidebarRef.current = { extraGuests, ratePerHead }
+  const saveSidebarTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const preDragSnapshot = useRef<BoardSnapshot | null>(null)
   const dragStart = useRef<{ id: string; x: number; y: number; left?: number; top?: number; panX?: number; panY?: number } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -163,6 +172,7 @@ export default function Page() {
     const currentSnapshot: BoardSnapshot = snapshot ?? {
       families: [...familiesRef.current],
       positions: currentResolvedPositions,
+      sidebar: { ...sidebarRef.current },
     }
     setUndoStack((prev) => [...prev.slice(-25), currentSnapshot])
   }
@@ -173,7 +183,12 @@ export default function Page() {
     setUndoStack((prev) => prev.slice(0, -1))
     setFamilies(prevSnapshot.families)
     setFamilyPositions(prevSnapshot.positions)
-    void saveBoard(prevSnapshot.families, prevSnapshot.positions)
+    if (prevSnapshot.sidebar) {
+      setExtraGuests(prevSnapshot.sidebar.extraGuests)
+      setRatePerHead(prevSnapshot.sidebar.ratePerHead)
+      sidebarRef.current = prevSnapshot.sidebar
+    }
+    void saveBoard(prevSnapshot.families, prevSnapshot.positions, prevSnapshot.sidebar ?? sidebarRef.current)
   }
 
   useEffect(() => {
@@ -270,14 +285,70 @@ export default function Page() {
     void saveBoard(nextFamilies)
   }
 
-  const saveBoard = async (nextFamilies: typeof initialFamilies, nextPositions = familyPositionsRef.current) => {
-    await mutate(fetch('/api/board', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ families: nextFamilies, positions: nextPositions }) }).then((response) => response.json()), { revalidate: false })
+  const saveBoard = async (
+    nextFamilies: typeof initialFamilies = familiesRef.current,
+    nextPositions = familyPositionsRef.current,
+    nextSidebar = sidebarRef.current
+  ) => {
+    await mutate(
+      fetch('/api/board', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          families: nextFamilies,
+          positions: nextPositions,
+          sidebar: nextSidebar,
+        }),
+      }).then((response) => response.json()),
+      { revalidate: false }
+    )
+  }
+
+  function updateSidebarField(field: 'extraGuests' | 'ratePerHead', val: number) {
+    const nextVal = Math.max(0, val)
+    if (field === 'extraGuests') setExtraGuests(nextVal)
+    if (field === 'ratePerHead') setRatePerHead(nextVal)
+
+    const nextSidebar = {
+      ...sidebarRef.current,
+      [field]: nextVal,
+    }
+    sidebarRef.current = nextSidebar
+
+    if (saveSidebarTimeoutRef.current) {
+      clearTimeout(saveSidebarTimeoutRef.current)
+    }
+    saveSidebarTimeoutRef.current = setTimeout(() => {
+      void saveBoard(familiesRef.current, familyPositionsRef.current, nextSidebar)
+    }, 450)
+  }
+
+  function flushSidebarSave() {
+    if (saveSidebarTimeoutRef.current) {
+      clearTimeout(saveSidebarTimeoutRef.current)
+      saveSidebarTimeoutRef.current = null
+      void saveBoard(familiesRef.current, familyPositionsRef.current, sidebarRef.current)
+    }
   }
 
   useEffect(() => {
     if (data) {
       setFamilies(data.families)
       setFamilyPositions(data.positions)
+      if (data.sidebar) {
+        const activeEl = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
+        const isEditingExtra = activeEl?.getAttribute('aria-label') === 'Extra guests estimate'
+        const isEditingRate = activeEl?.getAttribute('aria-label') === 'Cost per head in PKR'
+
+        if (typeof data.sidebar.extraGuests === 'number' && !isEditingExtra) {
+          setExtraGuests(data.sidebar.extraGuests)
+          sidebarRef.current.extraGuests = data.sidebar.extraGuests
+        }
+        if (typeof data.sidebar.ratePerHead === 'number' && !isEditingRate) {
+          setRatePerHead(data.sidebar.ratePerHead)
+          sidebarRef.current.ratePerHead = data.sidebar.ratePerHead
+        }
+      }
     }
   }, [data])
 
@@ -608,7 +679,15 @@ export default function Page() {
               <span className="sb-heading">Estimate</span>
               <label className="sb-field-label">Extra / buffer guests</label>
               <div className="sb-input-row">
-                <input className="sb-input" type="number" min={0} value={extraGuests} onChange={(e) => setExtraGuests(Math.max(0, Number(e.target.value)))} aria-label="Extra guests estimate" />
+                <input
+                  className="sb-input"
+                  type="number"
+                  min={0}
+                  value={extraGuests}
+                  onChange={(e) => updateSidebarField('extraGuests', Number(e.target.value))}
+                  onBlur={flushSidebarSave}
+                  aria-label="Extra guests estimate"
+                />
                 <span className="sb-input-suffix">guests</span>
               </div>
               <div className="sb-stat sb-total"><span className="sb-num">{totalGuests + extraGuests}</span><span className="sb-label">Total estimated</span></div>
@@ -628,7 +707,15 @@ export default function Page() {
               <label className="sb-field-label">Cost per head</label>
               <div className="sb-input-row">
                 <span className="sb-input-prefix">PKR</span>
-                <input className="sb-input" type="number" min={0} value={ratePerHead} onChange={(e) => setRatePerHead(Math.max(0, Number(e.target.value)))} aria-label="Cost per head in PKR" />
+                <input
+                  className="sb-input"
+                  type="number"
+                  min={0}
+                  value={ratePerHead}
+                  onChange={(e) => updateSidebarField('ratePerHead', Number(e.target.value))}
+                  onBlur={flushSidebarSave}
+                  aria-label="Cost per head in PKR"
+                />
               </div>
               <div className="sb-stat sb-expense">
                 <span className="sb-num">PKR {((totalGuests + extraGuests) * ratePerHead).toLocaleString()}</span>

@@ -6,6 +6,7 @@ export const invitationBoard = pgTable('invitation_board', {
   id: text('id').primaryKey(),
   families: jsonb('families').notNull(),
   positions: jsonb('positions').notNull(),
+  sidebar: jsonb('sidebar'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 })
 

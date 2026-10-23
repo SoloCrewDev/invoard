@@ -6,7 +6,13 @@ const BOARD_ID = 'shared-wedding-board'
 
 export async function GET() {
   const rows = await db.select().from(invitationBoard).where(eq(invitationBoard.id, BOARD_ID)).limit(1)
-  if (rows[0]) return NextResponse.json(rows[0])
+  if (rows[0]) {
+    const data = rows[0] as typeof rows[0] & { sidebar?: { extraGuests?: number; ratePerHead?: number } }
+    if (!data.sidebar || typeof data.sidebar !== 'object') {
+      data.sidebar = { extraGuests: 0, ratePerHead: 3500 }
+    }
+    return NextResponse.json(data)
+  }
   const board = {
     id: BOARD_ID,
     families: [
@@ -16,6 +22,7 @@ export async function GET() {
       { id: 'kapoor', name: 'Kapoor Family', location: 'Mumbai', color: 'purple', people: ['Amit', 'Neha', 'Kabir', 'Tara'] },
     ],
     positions: {},
+    sidebar: { extraGuests: 0, ratePerHead: 3500 },
     updatedAt: new Date(),
   }
   await db.insert(invitationBoard).values(board)
@@ -27,10 +34,17 @@ export async function PUT(request: Request) {
   if (!Array.isArray(body.families) || typeof body.positions !== 'object' || body.positions === null) {
     return NextResponse.json({ error: 'Invalid board data' }, { status: 400 })
   }
+  const sidebar = body.sidebar && typeof body.sidebar === 'object'
+    ? {
+        extraGuests: Math.max(0, Number(body.sidebar.extraGuests) || 0),
+        ratePerHead: Math.max(0, Number(body.sidebar.ratePerHead) || 3500),
+      }
+    : { extraGuests: 0, ratePerHead: 3500 }
+
   const [board] = await db
     .insert(invitationBoard)
-    .values({ id: BOARD_ID, families: body.families, positions: body.positions, updatedAt: new Date() })
-    .onConflictDoUpdate({ target: invitationBoard.id, set: { families: body.families, positions: body.positions, updatedAt: new Date() } })
+    .values({ id: BOARD_ID, families: body.families, positions: body.positions, sidebar, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: invitationBoard.id, set: { families: body.families, positions: body.positions, sidebar, updatedAt: new Date() } })
     .returning()
   return NextResponse.json(board)
 }
